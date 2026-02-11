@@ -1,11 +1,19 @@
 name: Bot Hoy No Circula
 
 on:
-  workflow_dispatch: # Botón manual
+  # 1. AUTO-TEST AL GUARDAR CAMBIOS
+  push:
+    branches:
+      - main
+      
+  # 2. BOTÓN MANUAL (Pruebas)
+  workflow_dispatch:
+
+  # 3. HORARIOS ESTRATÉGICOS (UTC)
   schedule:
-    # Ejecución 1: 6:05 AM hora CDMX (12:05 UTC)
+    # Mañana: 6:05 AM CDMX (~12:05 UTC) -> Para saber qué auto se queda hoy.
     - cron: '5 12 * * *'
-    # Ejecución 2: 8:05 PM hora CDMX (02:05 UTC)
+    # Noche: 8:05 PM CDMX (~02:05 UTC) -> Para saber qué auto descansa mañana.
     - cron: '5 2 * * *'
 
 jobs:
@@ -21,7 +29,7 @@ jobs:
           python-version: '3.9'
 
       - name: Instalar librerías
-        # ntscraper para Twitter, feedparser para noticias
+        # Agregamos requests y librerías de scraping
         run: pip install requests feedparser pytz ntscraper
 
       - name: Ejecutar Bot
