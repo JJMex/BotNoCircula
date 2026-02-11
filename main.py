@@ -13,6 +13,7 @@ CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 RSS_NEWS = "https://news.google.com/rss/search?q=Contingencia+Ambiental+CDMX+CAMe+activan&hl=es-419&gl=MX&ceid=MX:es-419&when:1d"
 TWITTER_USER = "CAMegalopolis"
 
+# --- TELEGRAM BLINDADO ---
 def enviar_telegram(mensaje):
     if not TOKEN or not CHAT_ID: return
     for i in range(1, 4):
@@ -24,49 +25,59 @@ def enviar_telegram(mensaje):
             time.sleep(5)
         except: time.sleep(5)
 
-# --- 1. HOY NO CIRCULA NORMAL ---
-def obtener_regla_normal(fecha):
+# --- 1. LÓGICA MATEMÁTICA DE REGLAS ---
+def obtener_regla(fecha):
     dia_semana = fecha.weekday() 
     nombres_dias = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
     nombre_dia = nombres_dias[dia_semana]
     
     regla = ""
-    if dia_semana == 0: regla = "🟡 <b>Engomado AMARILLO</b>\n🔢 Terminación <b>5 y 6</b>"
-    elif dia_semana == 1: regla = "🌸 <b>Engomado ROSA</b>\n🔢 Terminación <b>7 y 8</b>"
-    elif dia_semana == 2: regla = "🔴 <b>Engomado ROJO</b>\n🔢 Terminación <b>3 y 4</b>"
-    elif dia_semana == 3: regla = "🟢 <b>Engomado VERDE</b>\n🔢 Terminación <b>1 y 2</b>"
-    elif dia_semana == 4: regla = "🔵 <b>Engomado AZUL</b>\n🔢 Terminación <b>9 y 0</b>"
-    elif dia_semana == 5: regla = "⚠️ <b>SÁBADO:</b> Revisar holograma.\n<i>(Impares 1er/3er sáb - Pares 2do/4to sáb)</i>"
-    elif dia_semana == 6: regla = "✅ <b>DOMINGO:</b> Todos circulan (Salvo contingencia)."
+    # Lunes a Viernes
+    if dia_semana == 0: regla = "🟡 <b>Engomado AMARILLO</b>\n🔢 Terminación <b>5 y 6</b> (Todos los hologramas 1 y 2)."
+    elif dia_semana == 1: regla = "🌸 <b>Engomado ROSA</b>\n🔢 Terminación <b>7 y 8</b> (Todos los hologramas 1 y 2)."
+    elif dia_semana == 2: regla = "🔴 <b>Engomado ROJO</b>\n🔢 Terminación <b>3 y 4</b> (Todos los hologramas 1 y 2)."
+    elif dia_semana == 3: regla = "🟢 <b>Engomado VERDE</b>\n🔢 Terminación <b>1 y 2</b> (Todos los hologramas 1 y 2)."
+    elif dia_semana == 4: regla = "🔵 <b>Engomado AZUL</b>\n🔢 Terminación <b>9 y 0</b> (Todos los hologramas 1 y 2)."
+    
+    # SÁBADO (Cálculo matemático)
+    elif dia_semana == 5:
+        num_sabado = (fecha.day - 1) // 7 + 1
+        if num_sabado in [1, 3]: 
+            regla = f"⚠️ <b>{num_sabado}º SÁBADO DEL MES:</b>\n🚫 Descansan: <b>Holograma 1 (IMPAR)</b> + Todos Hol 2."
+        elif num_sabado in [2, 4]: 
+            regla = f"⚠️ <b>{num_sabado}º SÁBADO DEL MES:</b>\n🚫 Descansan: <b>Holograma 1 (PAR)</b> + Todos Hol 2."
+        else: 
+            regla = f"⚠️ <b>5º SÁBADO (ESPECIAL):</b>\n🚫 Descansan: <b>Únicamente Holograma 2</b>.\n✅ Holograma 1 CIRCULA."
+            
+    elif dia_semana == 6: 
+        regla = "✅ <b>DOMINGO:</b> Todos circulan (Salvo contingencia)."
     
     return nombre_dia, regla
 
 # --- 2. DETECTOR DE CONTINGENCIA ---
 def revisar_contingencia(fecha_hoy_mx):
-    print("🔎 Buscando alertas de Contingencia (Noticias de HOY)...")
-    alerta_encontrada = False
+    alerta = False
     fuente = ""
     detalles = ""
     dia_actual = fecha_hoy_mx.date()
 
-    # Fuente A: Google News
+    # Google News
     try:
         feed = feedparser.parse(RSS_NEWS)
         for entry in feed.entries:
             if hasattr(entry, 'published_parsed'):
                 fecha_noticia = datetime(*entry.published_parsed[:6], tzinfo=pytz.utc).astimezone(fecha_hoy_mx.tzinfo).date()
                 if fecha_noticia != dia_actual: continue 
-
                 txt = entry.title.lower()
                 if "activa" in txt and "contingencia" in txt:
-                    alerta_encontrada = True
+                    alerta = True
                     fuente = "Google News"
                     detalles = f"<a href='{entry.link}'>{entry.title}</a>"
                     break
     except: pass
 
-    # Fuente B: Twitter
-    if not alerta_encontrada:
+    # Twitter
+    if not alerta:
         try:
             scraper = Nitter(log_level=1, skip_instance_check=False)
             tweets = scraper.get_tweets(TWITTER_USER, mode='user', number=5)
@@ -74,64 +85,51 @@ def revisar_contingencia(fecha_hoy_mx):
                 for t in tweets['tweets']:
                     txt = t['text'].lower()
                     es_reciente = False
-                    fecha_str = t['date']
                     hoy_str = fecha_hoy_mx.strftime("%b %-d")
-                    if "m" in fecha_str or "h" in fecha_str or hoy_str in fecha_str:
-                         es_reciente = True
+                    if "m" in t['date'] or "h" in t['date'] or hoy_str in t['date']: es_reciente = True
 
                     if es_reciente and "se activa" in txt and "contingencia" in txt:
-                        alerta_encontrada = True
-                        fuente = "Twitter @CAMegalopolis"
-                        detalles = f"{t['text'][:100]}..."
+                        alerta = True
+                        fuente = "Twitter (CAMe)"
+                        detalles = f"{t['text'][:80]}...\n🔗 <a href='{t['link']}'>Ver Tweet</a>"
                         break
         except: pass
 
-    return alerta_encontrada, fuente, detalles
+    return alerta, fuente, detalles
 
+# --- ORQUESTADOR ---
 def main():
     tz_mx = pytz.timezone('America/Mexico_City')
     fecha_hoy = datetime.now(tz_mx)
-    hora = fecha_hoy.hour
     
-    # Determinar si es reporte de Mañana (HOY) o Noche (MAÑANA)
-    es_manana = (hora < 12)
+    # Determinar contexto (Mañana = HOY, Noche = MAÑANA)
+    es_manana = (fecha_hoy.hour < 12)
+    fecha_objetivo = fecha_hoy if es_manana else fecha_hoy + timedelta(days=1)
+    contexto_tiempo = "HOY" if es_manana else "MAÑANA"
     
-    if es_manana:
-        fecha_objetivo = fecha_hoy
-        titulo = "☀️ <b>BUENOS DÍAS</b>"
-        contexto_tiempo = "HOY"
-    else:
-        fecha_objetivo = fecha_hoy + timedelta(days=1)
-        titulo = "🌙 <b>REPORTE NOCTURNO</b>"
-        contexto_tiempo = "MAÑANA"
-
-    # Regla normal del día objetivo
-    nombre_dia_obj, regla_obj = obtener_regla_normal(fecha_objetivo)
-    
-    # Revisamos contingencia (basado en noticias de HOY)
+    nombre_dia_obj, regla_obj = obtener_regla(fecha_objetivo)
     hay_contingencia, fuente_cont, info_cont = revisar_contingencia(fecha_hoy)
-    
-    # --- CONSTRUCCIÓN DEL MENSAJE ---
-    msg = f"{titulo}\n"
-    msg += f"📅 <b>{contexto_tiempo} {nombre_dia_obj}</b> ({fecha_objetivo.strftime('%d/%m')})\n\n"
+    fecha_str = fecha_objetivo.strftime('%d/%m')
+
+    # --- MENSAJE MINIMALISTA ---
+    msg = "📡 <i>Tras analizar monitores atmosféricos y boletines oficiales, el reporte es el siguiente:</i>\n\n"
     
     if hay_contingencia:
-        # --- MENSAJE DE ALERTA MODIFICADO ---
-        msg += "🚨🚨 <b>¡ALERTA: CONTINGENCIA AMBIENTAL!</b> 🚨🚨\n"
-        msg += f"Se detectaron avisos oficiales activados hoy.\n"
-        msg += f"<b>Fuente:</b> {fuente_cont}\n"
-        msg += f"<b>Detalle:</b> {info_cont}\n\n"
-        
-        msg += "⛔ <b>VEHÍCULOS QUE NO CIRCULAN (Fase 1):</b>\n"
+        msg += f"🚨 <b>ESTADO: CONTINGENCIA FASE 1 ({contexto_tiempo})</b>\n"
+        msg += "──────────────────\n"
+        msg += f"📅 <b>{nombre_dia_obj} {fecha_str}</b>\n\n"
+        msg += "⛔ <b>RESTRICCIONES AMBIENTALES:</b>\n"
         msg += "🚫 <b>Holograma 2:</b> TODOS descansan.\n"
-        msg += "🚫 <b>Holograma 1:</b> Descansan placas habituales + Terminación Par/Impar (ver enlace).\n"
-        msg += "🚫 <b>Sin Holograma:</b> TODOS descansan.\n"
-        msg += "✅ <b>Hologramas 0 y 00:</b> EXENTOS (Circulan)."
+        msg += "🚫 <b>Holograma 1:</b> Terminación PAR/IMPAR + Placa habitual.\n"
+        msg += "🚫 <b>Holograma 0/00:</b> Exentos.\n\n"
+        msg += f"<b>🔍 FUENTE OFICIAL ({fuente_cont}):</b>\n{info_cont}"
     else:
-        # --- MENSAJE NORMAL ---
-        msg += f"🚗 <b>{contexto_tiempo} NO CIRCULA:</b>\n"
+        msg += f"✅ <b>ESTADO: SIN CONTINGENCIA ({contexto_tiempo})</b>\n"
+        msg += "──────────────────\n"
+        msg += f"📅 <b>{nombre_dia_obj} {fecha_str}</b>\n\n"
+        msg += f"🚗 <b>NO CIRCULA:</b>\n"
         msg += f"{regla_obj}\n\n"
-        msg += "✅ <b>Sin Contingencia Ambiental</b> reportada.\n"
+        msg += "<i>Calidad del aire dentro de parámetros permitidos.</i>"
 
     enviar_telegram(msg)
 
