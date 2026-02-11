@@ -13,6 +13,12 @@ CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 RSS_NEWS = "https://news.google.com/rss/search?q=Contingencia+Ambiental+CDMX+CAMe+activan&hl=es-419&gl=MX&ceid=MX:es-419&when:1d"
 TWITTER_USER = "CAMegalopolis"
 
+# PALABRAS PROHIBIDAS (Si el título tiene esto, NO es oficial aún)
+FILTROS_NEGATIVOS = [
+    "posible", "podría", "podria", "probabilidad", "prevé", "preve", 
+    "riesgo", "descarta", "no se activa", "falsa", "rumor", "suspende"
+]
+
 # --- TELEGRAM BLINDADO ---
 def enviar_telegram(mensaje):
     if not TOKEN or not CHAT_ID: return
@@ -39,7 +45,7 @@ def obtener_regla(fecha):
     elif dia_semana == 3: regla = "🟢 <b>Engomado VERDE</b>\n🔢 Terminación <b>1 y 2</b> (Todos los hologramas 1 y 2)."
     elif dia_semana == 4: regla = "🔵 <b>Engomado AZUL</b>\n🔢 Terminación <b>9 y 0</b> (Todos los hologramas 1 y 2)."
     
-    # SÁBADO (Cálculo matemático)
+    # SÁBADO
     elif dia_semana == 5:
         num_sabado = (fecha.day - 1) // 7 + 1
         if num_sabado in [1, 3]: 
@@ -54,7 +60,7 @@ def obtener_regla(fecha):
     
     return nombre_dia, regla
 
-# --- 2. DETECTOR DE CONTINGENCIA ---
+# --- 2. DETECTOR DE CONTINGENCIA (FILTRO ESTRICTO) ---
 def revisar_contingencia(fecha_hoy_mx):
     alerta = False
     fuente = ""
@@ -68,8 +74,16 @@ def revisar_contingencia(fecha_hoy_mx):
             if hasattr(entry, 'published_parsed'):
                 fecha_noticia = datetime(*entry.published_parsed[:6], tzinfo=pytz.utc).astimezone(fecha_hoy_mx.tzinfo).date()
                 if fecha_noticia != dia_actual: continue 
+                
                 txt = entry.title.lower()
-                if "activa" in txt and "contingencia" in txt:
+                
+                # REGLA DE ORO: Debe decir "activa" o "fase 1" Y "contingencia"
+                es_positivo = ("activa" in txt or "fase 1" in txt or "doble hoy no circula" in txt) and "contingencia" in txt
+                
+                # REGLA DE EXCLUSIÓN: No debe tener palabras de duda
+                es_negativo = any(neg in txt for neg in FILTROS_NEGATIVOS)
+
+                if es_positivo and not es_negativo:
                     alerta = True
                     fuente = "Google News"
                     detalles = f"<a href='{entry.link}'>{entry.title}</a>"
@@ -88,7 +102,10 @@ def revisar_contingencia(fecha_hoy_mx):
                     hoy_str = fecha_hoy_mx.strftime("%b %-d")
                     if "m" in t['date'] or "h" in t['date'] or hoy_str in t['date']: es_reciente = True
 
-                    if es_reciente and "se activa" in txt and "contingencia" in txt:
+                    es_positivo = ("se activa" in txt or "fase 1" in txt) and "contingencia" in txt
+                    es_negativo = any(neg in txt for neg in FILTROS_NEGATIVOS)
+
+                    if es_reciente and es_positivo and not es_negativo:
                         alerta = True
                         fuente = "Twitter (CAMe)"
                         detalles = f"{t['text'][:80]}...\n🔗 <a href='{t['link']}'>Ver Tweet</a>"
@@ -102,7 +119,7 @@ def main():
     tz_mx = pytz.timezone('America/Mexico_City')
     fecha_hoy = datetime.now(tz_mx)
     
-    # Determinar contexto (Mañana = HOY, Noche = MAÑANA)
+    # Contexto (Mañana=HOY, Noche=MAÑANA)
     es_manana = (fecha_hoy.hour < 12)
     fecha_objetivo = fecha_hoy if es_manana else fecha_hoy + timedelta(days=1)
     contexto_tiempo = "HOY" if es_manana else "MAÑANA"
@@ -111,7 +128,7 @@ def main():
     hay_contingencia, fuente_cont, info_cont = revisar_contingencia(fecha_hoy)
     fecha_str = fecha_objetivo.strftime('%d/%m')
 
-    # --- MENSAJE MINIMALISTA ---
+    # --- MENSAJE ---
     msg = "📡 <i>Tras analizar monitores atmosféricos y boletines oficiales, el reporte es el siguiente:</i>\n\n"
     
     if hay_contingencia:
@@ -124,7 +141,7 @@ def main():
         msg += "🚫 <b>Holograma 0/00:</b> Exentos.\n\n"
         msg += f"<b>🔍 FUENTE OFICIAL ({fuente_cont}):</b>\n{info_cont}"
     else:
-        msg += f"✅ <b>ESTADO: SIN CONTINGENCIA ({contexto_tiempo})</b>\n"
+        msg += f"✅ <b>ESTADO: SIN CONTINGENCIA OFICIAL ({contexto_tiempo})</b>\n"
         msg += "──────────────────\n"
         msg += f"📅 <b>{nombre_dia_obj} {fecha_str}</b>\n\n"
         msg += f"🚗 <b>NO CIRCULA:</b>\n"
